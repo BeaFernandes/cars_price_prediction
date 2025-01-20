@@ -1,5 +1,5 @@
 ---
-title: "Ex3_BeatrizAlmeida"
+title: "Cars Price Prediction"
 output: html_document
 ---
 
