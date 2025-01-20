@@ -1,0 +1,324 @@
+---
+title: "Ex3_BeatrizAlmeida"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+Importando os dados do dataset escolhido e atribuíndo à variável cars.
+
+```{r }
+cars <- read.csv('/home/beatriz-pessoal/Documents/UTFPR/CDA/Estatística e R/Ex3_BeatrizAlmeida/cars.csv')
+```
+
+## Introdução
+
+O objetivo da presente análise é, através dos dados de uma seleção variada de carros usados e seus preços de revenda, ajustar um modelo de regressão linear múltipla que poderá prever os possíveis preços para outros automóveis a partir de suas características.
+Um modelo como esse pode auxiliar compradores e vendedores a precificarem carros de acordo com os valores do mercado.
+
+## Contextualização e preparação do conjunto de dados
+
+O conjunto de dados escolhido contém informações a respeito de carros usados de variadas marcas e modelos. A seguir observa-se as primeiras linhas do dataset.
+
+```{r }
+head(cars)
+```
+
+Com ajuda da função dim podemos observar a quantidade de observações e variáveis, respectivamente:
+
+```{r }
+dim(cars)
+```
+
+(100 observações e 13 variáveis)
+
+### Preparação dos dados
+
+Com intuito de facilitar a análise e também a compreensão dos dados, será feita a conversão dos valores de *Price*, que estão representados pela moeda indiana (INR), para a moeda brasileira (BRL). Para este cálculo está sendo considerada a taxa de conversão válida para o momento em que a análise esta sendo realizada, a qual é igual a 0.0646.
+
+``` {r }
+require(dplyr)
+
+current_exchange_rate = 0.0646
+
+cars <- cars %>% 
+  dplyr::mutate(Price_BRL = Price * current_exchange_rate)
+```
+
+Inicialmente será verificada a possibilidade de um modelo com uso das covariáveis *Kilometers_Driven*, *Mileage*, *Power*, *Engine*, *Owner_Type*, *Transmission* e *Fuel_Type*. A variável resposta será *Price_BRL*, ou seja, será o valor que o modelo tentará prever.
+
+Selecionando apenas as variáveis de interesse supracitadas. A variáveis qualitativas serão transformadas em factors para possibilitar a modelagem.
+
+```{r }
+cars_filt <- cars %>% 
+  dplyr::select(Price_BRL, Kilometers_Driven, Mileage, Power, Engine, Owner_Type, Transmission, Fuel_Type) %>% 
+  dplyr::mutate(Owner_Type_factor = factor(Owner_Type, levels = c('First', 'Second', 'Third'))) %>%
+  dplyr::mutate(Transmission_factor = factor(Transmission, levels = c('Manual', 'Automatic'))) %>%
+  dplyr::mutate(Fuel_Type_factor = factor(Fuel_Type, levels = c('Petrol', 'Diesel')))
+
+
+head(cars_filt)
+```
+
+### Contextualização dos dados
+
+Entendendo a estrutura dos dados:
+
+```{r }
+str(cars_filt)
+```
+
+Conforme indicado acima, após os ajustes realizados, o dataset continua com suas 100 observações e agora conta com 5 variáveis quantitativas, as quais estão adequadamente classificadas entre int e num. As variáveis qualitativas são 6 e dessas, 3 são chr as outras 3 se tratam das mesmas chr transformadas em Factor.
+
+#### Descrição das colunas
+
+* **Price_BRL** $\Rightarrow$ O preço máximo em BRL, moeda brasileira.
+* **Kilometers_Driven** $\Rightarrow$ Total de kilômetros rodados pelo carro.- 
+* **Mileage** $\Rightarrow$ Kilômetros que o carro faz por litro de combustível, ou seja, sua eficiência.
+* **Power** $\Rightarrow$ Potência máxima do carro em bhp (Brake Horsepower).
+* **Engine** $\Rightarrow$ Capacidade do motor em cm³ (centímetros cúbicos).
+* **Owner_Type** $\Rightarrow$ Indica o número de proprietários anteriores do carro (ex.: First = Primeiro, Second = Segundo, Third = Terceiro).
+* **Transmission** $\Rightarrow$ Tipo de transmissão do carro (ex.: Manual, Automatic)
+* **Fuel_Type** $\Rightarrow$ O tipo de combustível utilizado pelo carro (ex.: Petrol, Diesel).
+
+Para aprofundar a análise desses dados, observa-se algumas estatísticas descritivas.
+
+```{r }
+summary(cars_filt)
+```
+
+Com relação ao preço, observa-se que há uma grande diferença entre o valor mínimo (R$ 29.070,00) e o valor máximo (R$ 258.400,00). Verificaremos melhor esses valores através de um box plot.
+
+
+```{r }
+boxplot(
+    cars_filt$Price_BRL, 
+    main='Distribuição de preços',
+    ylab='Preço em R$'
+)
+```
+
+O box plot mostra que 50% dos valores estão concentrados nos valores entre R$ 80.000,00 e R$ 250.000,00. É possível notar também que não há outliers na amostra.
+
+Agora olhando para as variáveis Kilometers_Driven e Power, observa-se o seguinte:
+
+```{r }
+par(mfrow = c(2, 2))
+boxplot(cars_filt$Kilometers_Driven, main='KM rodados')
+boxplot(cars_filt$Power, main='Potência do motor')
+boxplot(cars_filt$Engine, main='Capacidade do motor')
+```
+Há uma distribuição equilibrada para os KMs rodados dos carros da amostra. Para ambas as variáveis existem alguns outliers.
+
+## Modelagem
+
+### Relação linear
+
+Verificando se as relações entre as variáveis X com a Y são lineares.
+
+```{r }
+par(mfrow = c(2, 2))
+plot(cars_filt$Price_BRL, cars_filt$Kilometers_Driven)
+plot(cars_filt$Price_BRL, cars_filt$Mileage)
+plot(cars_filt$Price_BRL, cars_filt$Power)
+plot(cars_filt$Price_BRL, cars_filt$Engine)
+```
+
+A relação das variáveis é linear, conforme mostram os gráficos de disperção. Na relação linear de preço com kilômetros rodados e eficiência há uma tendência negativa, indicando que quanto menor são esses valores, maiores são os preços. Enquanto na relação de preço com potência e capacidade de motor, há uma tendência positiva, o que sugere que quanto maior estes valores, maior é o preço do carro.
+
+
+### Multicolinearidade
+
+Verificando se há multicolinearidade entre as variáveis X que são do tipo quantitativa, ou seja, se elas tem uma correlação forte, maior do que 0.8.
+
+```{r }
+cars_quant <- cars %>% 
+  dplyr::select(Price_BRL, Kilometers_Driven, Mileage, Power, Engine)
+
+cor(cars_quant)
+```
+
+As covariáveis Engine e Power tem uma correlação de 0.805, um pouco acima do desejado. Considerando que, entre as duas, Power tem maior correlação com Price_BRL, a covariável Engine será retirada da modelagem.
+A partir da observação das correlações também conclui-se que a covariável Kilometers_Driven (Kilômetros rodados) neste dataset não tem forte correlação com o preço. Mesmo que em um cenário real isso pareça não fazer sentido, é necessário desconsiderar essa variável para que não enviese os resultados do modelo.
+
+
+### Ajuste do modelo
+
+A seguir são realizadas três tentativas de ajuste do modelo para validar qual delas apresenta melhor resultado.
+
+* O Modelo 1 inclui todas as variáveis qualitativas e as quantitativas que foram selecionada após as observações da sessão de Multicolinearidade.
+
+* O Modelo 2 inclui apenas as variáveis quantitativas.
+
+* O Modelo 3 tem as mesmas variáveis do 1, mas inclui a Engine que foi retirada devido a Multicolinearidade.
+
+```{r }
+modelo1_rlm <- stats::lm(Price_BRL ~ Mileage + Power + Owner_Type_factor + Transmission_factor + Fuel_Type_factor, data = cars_filt)
+summary(modelo1_rlm) # 0.8138
+
+modelo2_rlm <- stats::lm(Price_BRL ~ Mileage + Power, data = cars_filt)
+summary(modelo2_rlm) # 0.731
+
+modelo3_rlm <- stats::lm(Price_BRL ~ Mileage + Power + Engine + Owner_Type_factor + Transmission_factor + Fuel_Type_factor, data = cars_filt)
+summary(modelo3_rlm) # 0.8134
+
+```
+### Avaliação do ajuste
+
+Ao olhar para o R² dos três modelos, conclui-se em um primeiro momento que o Modelo 1 é o mais adequado, com R² = 0.8138.
+
+Através da teoria do AIC pode-se ter mais uma comprovação do modelo de melhor ajuste. Quanto menor o valor do AIC, melhor o ajuste.
+
+```{r }
+stats::AIC(modelo1_rlm)
+stats::AIC(modelo2_rlm)
+stats::AIC(modelo3_rlm)
+```
+
+O menor valor de AIC é de 2339.674, correspondente também ao Modelo 1.
+
+Considerando os testes realizados, segue-se com o Modelo 1 para avaliação do ajuste.
+
+
+#### Resíduos
+
+Através dos gráficos é possível observar que há uma certa Homocedasticidade nos resíduos de cada covariável. Mas vamos verificar com relação a normalidade para entender se é possível melhorar o ajuste.
+
+```{r }
+par(mfrow = c(2,3))
+plot(x = cars_filt$Mileage , y = stats::rstandard(modelo1_rlm), 
+     xlab = "Mileage", ylab = "Resíduos padronizados")
+abline(0, 0)
+
+
+plot(x = cars_filt$Power , y = stats::rstandard(modelo1_rlm), 
+     xlab = "Power", ylab = "Resíduos padronizados")
+abline(0, 0)
+
+plot(x = cars_filt$Owner_Type_factor , y = stats::rstandard(modelo1_rlm), 
+     xlab = "Owner_Type_factor", ylab = "Resíduos padronizados")
+abline(0, 0)
+
+plot(x = cars_filt$Transmission_factor , y = stats::rstandard(modelo1_rlm), 
+     xlab = "Transmission_factor", ylab = "Resíduos padronizados")
+abline(0, 0)
+
+plot(x = cars_filt$Fuel_Type_factor , y = stats::rstandard(modelo1_rlm), 
+     xlab = "Fuel_Type_factor", ylab = "Resíduos padronizados")
+abline(0, 0)
+
+```
+#### Normalidade dos resíduos
+
+O QQPlot abaixo demonstra uma não normalidade dos resíduos.
+
+```{r }
+plot(modelo1_rlm, which = 2)
+```
+
+#### Distância de Cook
+
+O gráfico de distância de Cook também demonstra que há alguns pontos atípicos que podem estar interferindo no modelo.
+
+```{r }
+plot(cooks.distance(modelo1_rlm),
+          xlab = "Observação",
+          ylab = "Distância de Cook")
+```
+
+Para corrigir a normalidade e a distância de cook, serão removidos os pontos de influência observados.
+
+Abaixo é armazenada a distância de cook em uma variável 'cook_dist', definido o limite de 4/n e através da função 'which' armazenadas as observações infulentes na variável 'obs_influentes'.
+Após isso são removidas essas observações do dataset e o modelo é novamente ajustado e salvo como 'modelo4_rlm'. Após isso, o R² passa a ter um valor melhor de 0.9085.
+
+```{r }
+cook_dist <- cooks.distance(modelo1_rlm)
+
+n <- nrow(cars_filt)
+limite <- 4 / n
+
+obs_influentes <- which(cook_dist > limite)
+
+cars_filt_sem_influentes <- cars_filt[-obs_influentes, ]
+
+modelo4_rlm <- stats::lm(Price_BRL ~ Mileage + Power + Owner_Type_factor + Transmission_factor + Fuel_Type_factor, data = cars_filt_sem_influentes)
+summary(modelo4_rlm)
+
+plot(cooks.distance(modelo1_rlm),
+          xlab = "Observação",
+          ylab = "Distância de Cook")
+```
+Agora observam-se nos gráficos uma normalidade de resíduos.
+
+```{r }
+par(mfrow = c(1,2))
+
+plot(modelo4_rlm, which = 2)
+plot(cooks.distance(modelo4_rlm),
+          xlab = "Observação",
+          ylab = "Distância de Cook")
+```
+Agora há uma melhora também na Homocedasticidade dos rasíduos.
+
+```{r }
+par(mfrow = c(2,3))
+plot(x = cars_filt_sem_influentes$Mileage , y = stats::rstandard(modelo4_rlm), 
+     xlab = "Mileage", ylab = "Resíduos padronizados")
+abline(0, 0)
+
+plot(x = cars_filt_sem_influentes$Power , y = stats::rstandard(modelo4_rlm), 
+     xlab = "Power", ylab = "Resíduos padronizados")
+abline(0, 0)
+
+plot(x = cars_filt_sem_influentes$Owner_Type_factor , y = stats::rstandard(modelo4_rlm), 
+     xlab = "Owner_Type_factor", ylab = "Resíduos padronizados")
+abline(0, 0)
+
+plot(x = cars_filt_sem_influentes$Transmission_factor , y = stats::rstandard(modelo4_rlm), 
+     xlab = "Transmission_factor", ylab = "Resíduos padronizados")
+abline(0, 0)
+
+plot(x = cars_filt_sem_influentes$Fuel_Type_factor , y = stats::rstandard(modelo4_rlm), 
+     xlab = "Fuel_Type_factor", ylab = "Resíduos padronizados")
+abline(0, 0)
+
+```
+
+Por fim pode-se comprovar o ajuste do modelo através da checagem que faz a ferramenta performance.
+
+```{r }
+require(performance)
+require(see)
+
+performance::check_model(modelo4_rlm)
+```
+
+
+* O 1º gráfico demonstra que a distribuição entre os valores previstos e observados está aceitável, seguindo uma caricatura muito semelhante.
+* O 2º gráfico avalia a linearidade das variáveis dependentes e independentes, que se encontra também aceitável.
+* O 3º gráfico aponta que os resíduos se distribuem de maneira homogênea.
+* O 4ª gráfico da distâncida de cook demonstra que nenhuma observação está fora dos limites marcados, ou seja, não há nenhum ponto de alavanca que possa prejudicar as estimativas.
+* O 5ª gráfico demonstra a Multicolinearidade das variáveis, conforme já havia sido verificado anteriormente, o gráfico comprova que não.
+* O 6º gráfico demosntra normalidade dos resíduos.
+
+
+### Interpretação dos resultados
+
+A seguir a interpretação dos resultados obtidos com o modelo ajustado.
+
+```{r }
+summary(modelo4_rlm)
+```
+
+* **R²** - O R² indica que 90,85% da variabilidade do preço dos carros é explicada pelas covariáveis utilizadas no modelo: Eficiência, Potência, Tipo de dono (Primeira mão, segunda mão, etc), Tipo de transmissão e Tipo de combustível.
+
+* **Beta1 Mileage** - Para o aumento de 1km de Eficiência, há uma diminuição de R$ 1.370,31 no valor do carro.
+* **Beta2 Power** - Para o aumento de 1 cavalo de potência do carro, há um aumento de R$ 743,00 no valor do mesmo.
+* **Beta3 Owner_Type_factorSecond** - Há uma diminuição de R$ 19.745,61 no valor de um carro de segunda mão com relação a um de primeira mão.
+* **Beta4 Owner_Type_factorThird** - Há uma diminuição de R$ 5.485,54 no valor de um carro de terceira mão com relação a um de primeira mão.
+* **Beta5 Transmission_factorAutomatic** - Há um aumento de R$ 32.515,54 no valor de um carro de Transmissão Automatica em relação a um Manual.
+* **Beta6 Fuel_Type_factorDiesel** - Há um aumento de R$ 13.849,46 no valor de um carro de combustível de Diesel em relação a um carro que de combustível de Petróleo.
+
+
